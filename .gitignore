@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# VRMモデルファイルを無視
+*.vrm
+
 # C extensions
 *.so
 
