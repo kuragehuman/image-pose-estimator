@@ -1,211 +1,130 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-<meta charset="utf-8">
-<title>MediaPipe VRM</title>
-<style>
-body { margin:0; overflow:hidden; }
-video { position:absolute; left:10px; top:10px; width:240px; }
-</style>
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/",
-    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@2.0.1/lib/three-vrm.module.js"
+  <meta charset="UTF-8">
+  <title>GLBボーンモデル表示サンプル</title>
+  <style>
+    body { margin:0; overflow:hidden; }
+    canvas { display:block; }
+  </style>
+
+  <!-- importmap -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+      "GLTFLoader": "https://unpkg.com/three@0.158.0/examples/jsm/loaders/GLTFLoader.js",
+      "OrbitControls": "https://unpkg.com/three@0.158.0/examples/jsm/controls/OrbitControls.js"
+    }
   }
-}
-</script>
-</script>
+  </script>
 </head>
-
 <body>
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'GLTFLoader';
+    import { OrbitControls } from 'OrbitControls';
 
-<video id="video" autoplay playsinline></video>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/kalidokit/dist/kalidokit.umd.js"></script>
+    // --- ボーンを線で可視化 ---
+    function visualizeBones(model) {
+      // モデルのワールド行列を更新
+      model.updateMatrixWorld(true);
 
-<script type="module">
+      model.traverse(obj => {
+        if (obj.isSkinnedMesh) {
+          const skeleton = obj.skeleton;
 
-import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { VRM } from "@pixiv/three-vrm";
-import { VRMLoaderPlugin } from "@pixiv/three-vrm";
+          skeleton.bones.forEach(bone => {
+            if (!bone.parent || !skeleton.bones.includes(bone.parent)) return; // ルートボーンはスキップ
 
-let currentVrm;
+            // ボーンのワールド座標を取得
+            const start = new THREE.Vector3();
+            const end = new THREE.Vector3();
+            bone.getWorldPosition(start);
+            bone.parent.getWorldPosition(end);
 
-const scene = new THREE.Scene();
+            // 線を作成
+            const material = new THREE.LineBasicMaterial({
+              color: getBoneColor(bone.name), // 部位ごとに色を変える
+              depthTest: false // 他のメッシュより前に描画
+            });
+            const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
+            const line = new THREE.Line(geometry, material);
 
-const camera = new THREE.PerspectiveCamera(
-  35,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  1000
-);
-
-camera.position.set(0, 1.4, 2);
-camera.lookAt(0, 1.4, 0);
-
-const renderer = new THREE.WebGLRenderer({alpha:true});
-renderer.setSize(window.innerWidth,window.innerHeight);
-document.body.appendChild(renderer.domElement);
-
-const light = new THREE.DirectionalLight(0xffffff);
-light.position.set(1,1,1);
-scene.add(light);
-
-const loader = new GLTFLoader();
-loader.register(parser => new VRMLoaderPlugin(parser));
-
-loader.load("tst2025_2.vrm",(gltf)=>{
-
-    currentVrm = gltf.userData.vrm;
-
-    scene.add(currentVrm.scene);
-
-    currentVrm.scene.rotation.y = Math.PI;
-
-});
-
-function animate(){
-
-    requestAnimationFrame(animate);
-
-    if(currentVrm){
-        currentVrm.update(0);
+            // scene に追加（ワールド座標なので obj に追加ではなく）
+            scene.add(line);
+          });
+        }
+      });
     }
 
-    renderer.render(scene,camera);
-}
+    // --- 部位ごとに色を返す ---
+    function getBoneColor(name) {
+      if (name.toLowerCase().includes("arm")) return 0xff0000;      // 赤: 腕
+      if (name.toLowerCase().includes("leg")) return 0x0000ff;      // 青: 脚
+      if (name.toLowerCase().includes("spine")) return 0x00ff00;    // 緑: 胴体
+      if (name.toLowerCase().includes("head")) return 0xffff00;     // 黄: 頭
+      return 0x800080; // その他は紫
+    }
 
-animate();
+    // --- シーン・カメラ・レンダラー ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xeeeeee);
 
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 1.5, 3);
 
-function rigRotation(name, rotation, dampener = 1) {
+    const renderer = new THREE.WebGLRenderer({antialias:true});
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
 
-    if (!currentVrm || !rotation) return;
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0,1,0);
+    controls.update();
 
-    const boneName =
-        name.charAt(0).toLowerCase() + name.slice(1);
+    // --- ライト ---
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+    hemiLight.position.set(0,20,0);
+    scene.add(hemiLight);
 
-    const bone =
-        currentVrm.humanoid.getNormalizedBoneNode(boneName);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(3,10,10);
+    scene.add(dirLight);
 
-    if (!bone) return;
+    // --- GLBモデル読み込み ---
+    const loader = new GLTFLoader();
+    let mixer;
+    loader.load('model.glb',
+      gltf => {
+        const model = gltf.scene;
+        scene.add(model);
 
-    const targetX = rotation.x * dampener;
-    const targetY = rotation.y * dampener;
-    const targetZ = rotation.z * dampener;
+        // ボーンを線で表示
+        visualizeBones(model);
+        
+        if (gltf.animations && gltf.animations.length > 0) {
+          mixer = new THREE.AnimationMixer(model);
+          gltf.animations.forEach(clip => mixer.clipAction(clip).play());
+        }
+      },
+      undefined,
+      error => console.error('GLB読み込みエラー:', error)
+    );
 
-    const smooth = 0.5;
+    // --- アニメーションループ ---
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+    animate();
 
-    bone.rotation.x += (targetX - bone.rotation.x) * smooth;
-    bone.rotation.y += (targetY - bone.rotation.y) * smooth;
-    bone.rotation.z += (targetZ - bone.rotation.z) * smooth;
-}
-
-function normalizePose(landmarks){
-
-    if(!landmarks) return null;
-
-    return landmarks.map(lm => {
-        return {
-            x: lm.x ?? 0,
-            y: lm.y ?? 0,
-            z: lm.z ?? 0,
-            visibility: lm.visibility ?? 1
-        };
+    // --- リサイズ対応 ---
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
     });
-}
-
-function animateVRM(pose){
-
-    if (!currentVrm) return;
-
-    let landmarks;
-    let worldlandmarks;
-
-    if (pose?.poseLandmarks) landmarks = pose.poseLandmarks;
-    else return;
-
-    if (pose?.poseWorldLandmarks) worldlandmarks = pose.poseWorldLandmarks;
-    else return;
-
-    if (!Array.isArray(landmarks)) return;
-    if (landmarks.length !== 33) return;
-
-    let riggedPose;
-
-    try{
-
-        riggedPose = Kalidokit.Pose.solve(
-            landmarks,
-            worldlandmarks,
-            {
-                runtime:"mediapipe",
-                video:video
-            }
-        );
-
-    }catch(e){
-
-        console.warn("Kalidokit error",e);
-        return;
-
-    }
-
-    if(!riggedPose) return;
-
-    // 全ボーン適用
-    Object.entries(riggedPose).forEach(([name,data])=>{
-
-        if(!data) return;
-
-        const rotation = data.rotation ?? data;
-
-        if(!rotation) return;
-
-        // 腰だけ弱め
-        const damp = name === "Hips" ? 0.7 : 1;
-
-        rigRotation(name,rotation,damp);
-
-    });
-}
-
-const video = document.getElementById("video");
-video.style.transform = "scaleX(-1)";
-
-const pose = new Pose({
-    locateFile:(file)=>{
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
-    }
-});
-
-pose.setOptions({
-    modelComplexity:1,
-    smoothLandmarks:true
-});
-
-pose.onResults(results=>{
-    if(results.poseLandmarks){
-        animateVRM(results);
-    }
-});
-
-
-const cameraMP = new Camera(video,{
-    onFrame: async ()=>{
-        await pose.send({image:video});
-    },
-    width:640,
-    height:480
-});
-
-cameraMP.start();
-
-</script>
+  </script>
 </body>
 </html>

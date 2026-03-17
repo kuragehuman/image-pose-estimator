@@ -8,7 +8,11 @@
 - Kalidokit (MIT License)
 - MediaPipe (Apache License 2.0)
 
-## 【開発メモ】
+## 【自分用メモ】
+
+★ three.jsの読み込みはimportmapを使うとエラーが出ない
+
+## 【開発メモ(旧)】
 
 VRMはアップしていません
 
